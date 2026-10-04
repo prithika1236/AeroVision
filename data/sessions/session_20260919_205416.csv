@@ -1,0 +1,11 @@
+# ===================================================================
+# Aircraft Lever Operator Ergonomic and Fatigue Monitoring System
+# Experimental Session Recording Telemetry
+# ===================================================================
+# session_id: session_20260919_205416
+# start_time: 2026-09-19 20:54:16
+# duration_seconds: 2.02
+# total_observations: 1
+# ===================================================================
+timestamp,elapsed_time,force_percent,force_source,wrist_angle,wrist_deviation,movement_angle,movement_range,angular_speed,repetition,tracking_status,fatigue_deviation
+279945.7907,1.75,,Disconnected,,,,0.0,0.0,0,LOST,INITIALIZING

@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aircraft Lever Operator Monitoring System</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Top Engineering Header -->
+    <header class="app-header">
+        <div class="header-titles">
+            <h1>AIRCRAFT LEVER OPERATOR MONITORING SYSTEM</h1>
+            <p class="subtitle">Real-Time Wrist Kinematics &amp; Lever Force Monitoring</p>
+        </div>
+        <div class="header-indicators">
+            <div class="indicator-item">
+                <span class="indicator-label">Camera</span>
+                <span class="indicator-dot" id="dotCamera"></span>
+            </div>
+            <div class="indicator-item">
+                <span class="indicator-label">Force Sensor</span>
+                <span class="indicator-dot" id="dotForce"></span>
+            </div>
+        </div>
+    </header>
+
+    <div class="main-layout">
+        <!-- Control Bar -->
+        <div class="control-bar card">
+            <div class="control-buttons">
+                <button id="btnStart" class="btn btn-start">START ANALYSIS</button>
+                <button id="btnStop" class="btn btn-stop" disabled>STOP ANALYSIS</button>
+            </div>
+            <div class="timer-display">
+                <span class="timer-label">ELAPSED TIME:</span>
+                <span class="timer-value mono" id="timerVal">00:00</span>
+            </div>
+        </div>
+
+        <!-- Upper Grid: Camera (Left) + Camera Calculations (Right) -->
+        <div class="grid-2col">
+            <!-- Section 1: Live Camera -->
+            <div class="card camera-section">
+                <div class="section-heading">LIVE CAMERA ANALYSIS</div>
+                <div class="video-wrapper">
+                    <img id="videoFeed" src="" alt="Live Stream" style="display: none;">
+                    <div id="videoPlaceholder" class="video-placeholder">
+                        <div class="placeholder-text">Camera Idle — Click <strong>START ANALYSIS</strong> to begin</div>
+                    </div>
+                </div>
+                <div class="video-footer">
+                    <div class="footer-stat">
+                        <span class="stat-label">Device:</span>
+                        <span class="stat-val bold" id="lblActiveCamera">Camera 0</span>
+                    </div>
+                    <div class="footer-stat">
+                        <span class="stat-label">Tracking:</span>
+                        <span class="stat-val bold" id="trackingStatus">WAITING</span>
+                    </div>
+                    <div class="footer-stat">
+                        <span class="stat-label">Res:</span>
+                        <span class="stat-val mono" id="resDisplay">1280x720</span>
+                    </div>
+                    <div class="footer-stat">
+                        <span class="stat-label">FPS:</span>
+                        <span class="stat-val mono" id="fpsDisplay">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 2: Camera Calculations -->
+            <div class="card calculations-section">
+                <div class="section-heading">CAMERA CALCULATIONS</div>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-title">WRIST ANGLE</div>
+                        <div class="metric-num mono" id="valWristAngle">-- <span class="metric-unit">°</span></div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title">WRIST DEVIATION</div>
+                        <div class="metric-num mono" id="valWristDev">-- <span class="metric-unit">°</span></div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title">MOVEMENT ANGLE</div>
+                        <div class="metric-num mono" id="valMovAngle">-- <span class="metric-unit">°</span></div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title">ANGULAR SPEED</div>
+                        <div class="metric-num mono" id="valSpeed">-- <span class="metric-unit">°/s</span></div>
+                    </div>
+                    <div class="metric-card full-width">
+                        <div class="metric-title">MOVEMENT RANGE</div>
+                        <div class="metric-num mono" id="valRange">-- <span class="metric-unit">°</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle Grid: Hardware Force (Left) + Device Configuration (Right) -->
+        <div class="grid-2col">
+            <!-- Section 3: Hardware Force Sensor -->
+            <div class="card force-section">
+                <div class="section-heading">HARDWARE FORCE SENSOR</div>
+                <div class="force-display-grid">
+                    <div class="metric-card highlight-card">
+                        <div class="metric-title">CURRENT FORCE</div>
+                        <div class="metric-num mono highlight" id="valForceCurrent">-- <span class="metric-unit">%</span></div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title">AVERAGE FORCE</div>
+                        <div class="metric-num mono" id="valForceAvg">-- <span class="metric-unit">%</span></div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title">PEAK FORCE</div>
+                        <div class="metric-num mono" id="valForcePeak">-- <span class="metric-unit">%</span></div>
+                    </div>
+                </div>
+                <div class="force-status-bar">
+                    <div class="info-row">
+                        <span class="info-label">Connection Type:</span>
+                        <strong class="info-val" id="lblForceType">None</strong>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Active Device:</span>
+                        <strong class="info-val" id="lblForceDevice">None</strong>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Status:</span>
+                        <strong class="info-val" id="lblForceStatus">Not Connected</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 4: Universal Device Configuration -->
+            <div class="card config-section">
+                <div class="config-header-row">
+                    <div class="section-heading-inline">DEVICE CONFIGURATION</div>
+                    <button id="btnRefreshDevices" class="btn btn-secondary btn-sm">REFRESH DEVICES</button>
+                </div>
+
+                <!-- Connected Camera Information -->
+                <div class="device-group">
+                    <div class="group-title">CONNECTED CAMERA</div>
+                    <div class="cam-info-grid">
+                        <div class="info-row">
+                            <span class="info-label">Device Name:</span>
+                            <strong class="info-val" id="cfgCamName">Logitech HD Webcam C270</strong>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Interface:</span>
+                            <strong class="info-val" id="cfgCamInterface">USB Camera</strong>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Analysis Device:</span>
+                            <strong class="info-val mono" id="cfgCamDevice">Camera 0</strong>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Resolution:</span>
+                            <strong class="info-val mono" id="cfgCamResolution">1280 × 720</strong>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Status:</span>
+                            <strong class="info-val text-success" id="cfgCamStatus">CONNECTED</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Connected External Devices -->
+                <div class="device-group">
+                    <div class="group-title">CONNECTED EXTERNAL DEVICES</div>
+                    <div class="table-scroll-wrap">
+                        <table class="devices-table">
+                            <thead>
+                                <tr>
+                                    <th>Device</th>
+                                    <th>Type</th>
+                                    <th>Connection</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tblExternalDevicesBody">
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">Scanning devices...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Force Sensor Discovery & Selection -->
+                <div class="device-group">
+                    <div class="group-title">FORCE SENSOR</div>
+                    
+                    <!-- Mode Selector -->
+                    <div class="config-field-row">
+                        <span class="field-label">Mode:</span>
+                        <div class="btn-group">
+                            <button class="btn-mode active" data-mode="AUTO">AUTO</button>
+                            <button class="btn-mode" data-mode="WIFI">ESP32 NETWORK</button>
+                            <button class="btn-mode" data-mode="SERIAL">USB SERIAL</button>
+                        </div>
+                    </div>
+
+                    <!-- Network Status Line -->
+                    <div class="discovery-line" id="lineNetworkStatus">
+                        <span class="disc-label">Network:</span>
+                        <span class="disc-val mono" id="lblNetworkDiscovery">ESP32 (192.168.4.1) — Checking...</span>
+                    </div>
+
+                    <!-- Serial Discovery & Controls -->
+                    <div class="config-field-row" id="rowSerialSelect">
+                        <span class="field-label">Serial Device:</span>
+                        <select id="selSerialPorts" class="select-field">
+                            <option value="">No serial devices detected</option>
+                        </select>
+                        <button id="btnConnectSerial" class="btn btn-sm btn-primary">CONNECT</button>
+                        <button id="btnDisconnectSerial" class="btn btn-sm btn-outline">DISCONNECT</button>
+                    </div>
+
+                    <!-- ESP32 IP Config Controls (when in Wi-Fi mode) -->
+                    <div class="config-field-row" id="rowWifiConfig" style="display: none;">
+                        <span class="field-label">ESP32 IP:</span>
+                        <input type="text" id="txtEspIp" class="input-field mono" value="192.168.4.1">
+                        <button id="btnConnectWifi" class="btn btn-sm btn-primary">CONNECT</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 5: Live Graphs -->
+        <div class="card graphs-section">
+            <div class="section-heading">LIVE GRAPHS</div>
+            <div class="graphs-grid">
+                <!-- Graph 1 -->
+                <div class="graph-box">
+                    <div class="graph-title">Grip Force vs Time</div>
+                    <div class="canvas-wrap">
+                        <canvas id="chartGripForce"></canvas>
+                    </div>
+                </div>
+                <!-- Graph 2 -->
+                <div class="graph-box">
+                    <div class="graph-title">Wrist Angle vs Time</div>
+                    <div class="canvas-wrap">
+                        <canvas id="chartWristAngle"></canvas>
+                    </div>
+                </div>
+                <!-- Graph 3 -->
+                <div class="graph-box">
+                    <div class="graph-title">Movement Angle vs Time</div>
+                    <div class="canvas-wrap">
+                        <canvas id="chartMovementAngle"></canvas>
+                    </div>
+                </div>
+                <!-- Graph 4 -->
+                <div class="graph-box">
+                    <div class="graph-title">Angular Speed vs Time</div>
+                    <div class="canvas-wrap">
+                        <canvas id="chartAngularSpeed"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
