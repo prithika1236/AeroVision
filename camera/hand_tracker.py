@@ -7,7 +7,22 @@ Optimized for real-time low-latency performance with downsampled inference and c
 from typing import Optional, Tuple, Dict, Any, List
 import cv2
 import numpy as np
+
+# Protobuf 5.x/6.x compatibility shim for MediaPipe
+try:
+    from google.protobuf import symbol_database, message_factory
+    if hasattr(message_factory, 'GetMessageClass'):
+        if not hasattr(message_factory, 'GetPrototype'):
+            message_factory.GetPrototype = message_factory.GetMessageClass
+        if not hasattr(symbol_database.Default(), 'GetPrototype'):
+            symbol_database.Default().GetPrototype = message_factory.GetMessageClass
+        if hasattr(symbol_database, 'SymbolDatabase') and not hasattr(symbol_database.SymbolDatabase, 'GetPrototype'):
+            symbol_database.SymbolDatabase.GetPrototype = staticmethod(message_factory.GetMessageClass)
+except Exception:
+    pass
+
 import mediapipe as mp
+
 
 
 class HandTracker:

@@ -77,6 +77,15 @@ class ESP32Reader:
         self.average_force: Optional[float] = None
         self.peak_force: Optional[float] = None
 
+        # Serial Monitor & Stream Logging Buffers
+        self.serial_logs: List[Dict[str, Any]] = []
+        self.serial_packet_counter: int = 0
+        self.serial_rx_timestamps: List[float] = []
+        self.serial_rate_hz: float = 0.0
+        self.active_baud_rate: int = 115200
+        self._log_id_counter: int = 0
+        self.session_serial_records: List[Dict[str, Any]] = []
+
         # Active serial connection handle
         self._serial_handle: Optional[Any] = None
         self._active_serial_port: Optional[str] = None
@@ -247,6 +256,7 @@ class ESP32Reader:
                     force_val = float(data["force"])
 
                 force_clamped = round(max(0.0, min(100.0, force_val)), 1)
+                clock_str = time.strftime("%H:%M:%S") + f".{int((time.time() % 1) * 1000):03d}"
 
                 with self._lock:
                     self.latest_force_percent = force_clamped
@@ -264,6 +274,32 @@ class ESP32Reader:
                         self.force_history.pop(0)
                     self.average_force = round(sum(self.force_history) / len(self.force_history), 1)
                     self.peak_force = max(self.peak_force or 0.0, force_clamped)
+
+                    # Track packet rate & stream log
+                    self.serial_packet_counter += 1
+                    self.serial_rx_timestamps.append(now)
+                    if len(self.serial_rx_timestamps) > 30:
+                        self.serial_rx_timestamps.pop(0)
+                    if len(self.serial_rx_timestamps) >= 2:
+                        dt = self.serial_rx_timestamps[-1] - self.serial_rx_timestamps[0]
+                        if dt > 0.05:
+                            self.serial_rate_hz = round((len(self.serial_rx_timestamps) - 1) / dt, 1)
+
+                    self._log_id_counter += 1
+                    log_entry = {
+                        "id": self._log_id_counter,
+                        "time": clock_str,
+                        "timestamp": round(now, 3),
+                        "raw": json.dumps(data) if isinstance(data, dict) else str(data),
+                        "value": force_clamped,
+                        "source": "WIFI (ESP32)",
+                    }
+                    self.serial_logs.append(log_entry)
+                    if len(self.serial_logs) > 300:
+                        self.serial_logs.pop(0)
+                    self.session_serial_records.append(log_entry)
+                    if len(self.session_serial_records) > 5000:
+                        self.session_serial_records.pop(0)
 
                 # Release serial if Wi-Fi succeeded in auto mode
                 if self.mode == self.MODE_AUTO and self._serial_handle is not None:
@@ -295,6 +331,8 @@ class ESP32Reader:
                     if parsed_force is not None:
                         parsed_force = round(parsed_force, 1)
                         port_label = f"USB Serial ({self._active_serial_port})"
+                        clock_str = time.strftime("%H:%M:%S") + f".{int((time.time() % 1) * 1000):03d}"
+
                         with self._lock:
                             self.latest_force_percent = parsed_force
                             self.latest_timestamp = now
@@ -311,6 +349,33 @@ class ESP32Reader:
                                 self.force_history.pop(0)
                             self.average_force = round(sum(self.force_history) / len(self.force_history), 1)
                             self.peak_force = max(self.peak_force or 0.0, parsed_force)
+
+                            # Track packet rate & stream log
+                            self.serial_packet_counter += 1
+                            self.serial_rx_timestamps.append(now)
+                            if len(self.serial_rx_timestamps) > 30:
+                                self.serial_rx_timestamps.pop(0)
+                            if len(self.serial_rx_timestamps) >= 2:
+                                dt = self.serial_rx_timestamps[-1] - self.serial_rx_timestamps[0]
+                                if dt > 0.05:
+                                    self.serial_rate_hz = round((len(self.serial_rx_timestamps) - 1) / dt, 1)
+
+                            self._log_id_counter += 1
+                            log_entry = {
+                                "id": self._log_id_counter,
+                                "time": clock_str,
+                                "timestamp": round(now, 3),
+                                "raw": line,
+                                "value": parsed_force,
+                                "source": f"SERIAL ({self._active_serial_port})",
+                            }
+                            self.serial_logs.append(log_entry)
+                            if len(self.serial_logs) > 300:
+                                self.serial_logs.pop(0)
+                            self.session_serial_records.append(log_entry)
+                            if len(self.session_serial_records) > 5000:
+                                self.session_serial_records.pop(0)
+
                         return True
         except Exception:
             self._close_serial()
@@ -340,6 +405,7 @@ class ESP32Reader:
                     ser = serial.Serial(port, baud, timeout=self.serial_timeout)
                     self._serial_handle = ser
                     self._active_serial_port = port
+                    self.active_baud_rate = baud
                     return
                 except Exception:
                     continue
@@ -372,6 +438,38 @@ class ESP32Reader:
                 pass
 
         return None
+
+    def get_serial_stream(self, since_id: int = 0) -> Dict[str, Any]:
+        """Returns new serial log items since since_id, telemetry stats, and stream rate."""
+        with self._lock:
+            new_logs = [log for log in self.serial_logs if log["id"] > since_id]
+            last_packet_time = self.serial_logs[-1]["time"] if self.serial_logs else "--"
+            return {
+                "logs": new_logs,
+                "packet_rate_hz": self.serial_rate_hz if (self.connection_state == self.STATE_CONNECTED) else 0.0,
+                "total_packets": self.serial_packet_counter,
+                "active_port": self._active_serial_port or "Auto-Detecting",
+                "active_baud": self.active_baud_rate,
+                "connection_state": self.connection_state,
+                "latest_value": self.latest_force_percent,
+                "last_id": self._log_id_counter,
+                "last_packet_time": last_packet_time,
+            }
+
+    def clear_serial_logs(self) -> None:
+        """Clears buffered real-time serial terminal entries."""
+        with self._lock:
+            self.serial_logs.clear()
+
+    def generate_serial_csv(self) -> str:
+        """Generates a downloadable CSV string of all session serial stream packets."""
+        lines = ["Timestamp,Clock_Time,Source,Parsed_Force_Percent,Raw_Data"]
+        with self._lock:
+            records = list(self.session_serial_records)
+        for r in records:
+            raw_escaped = '"' + r.get("raw", "").replace('"', '""') + '"'
+            lines.append(f"{r.get('timestamp')},{r.get('time')},{r.get('source')},{r.get('value')},{raw_escaped}")
+        return "\n".join(lines)
 
     def read_force(self) -> Dict[str, Any]:
         """

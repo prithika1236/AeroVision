@@ -229,6 +229,72 @@
             </div>
         </div>
 
+        <!-- Section 4.5: Hardware Serial Monitor & Real-Time Data Plotter -->
+        <div class="card serial-monitor-section" id="serialMonitorCard">
+            <div class="serial-monitor-header">
+                <div class="section-heading-inline">HARDWARE SERIAL MONITOR &amp; DATA PLOTTER</div>
+                <div class="serial-monitor-controls">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="chkAutoScrollSerial" checked>
+                        <span>Auto-Scroll</span>
+                    </label>
+                    <button id="btnClearSerialLog" class="btn btn-secondary btn-sm">CLEAR LOG</button>
+                    <a id="btnExportSerialCsv" href="/api/serial/export_csv" download="serial_data_stream.csv" class="btn btn-secondary btn-sm" style="text-decoration: none; display: inline-flex; align-items: center;">EXPORT CSV</a>
+                    <button id="btnToggleSerialMonitor" class="btn btn-secondary btn-sm" title="Minimize/Maximize">COLLAPSE</button>
+                </div>
+            </div>
+
+            <div class="serial-monitor-body" id="serialMonitorBody">
+                <div class="serial-grid">
+                    <!-- Left: Raw Serial Console -->
+                    <div class="serial-console-card">
+                        <div class="serial-subheading">
+                            <span>RAW HARDWARE SERIAL STREAM</span>
+                            <span class="stream-badge mono" id="badgeSerialProtocol">PARSER: JSON / REGEX</span>
+                        </div>
+                        <div class="serial-terminal mono" id="serialTerminal">
+                            <div class="term-line text-muted">// Waiting for hardware serial stream connection...</div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Dedicated Serial Waveform Plotter -->
+                    <div class="serial-plotter-card">
+                        <div class="serial-subheading">
+                            <span>REAL-TIME HARDWARE SIGNAL OSCILLOSCOPE</span>
+                            <span class="stream-badge mono" id="badgeSerialRate">0.0 Hz</span>
+                        </div>
+                        <div class="serial-canvas-wrap">
+                            <canvas id="chartSerialStream"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer Telemetry Strip -->
+                <div class="serial-status-footer">
+                    <div class="serial-stat-item">
+                        <span class="stat-label">Active Port:</span>
+                        <strong class="stat-val mono" id="lblSerialActivePort">NONE</strong>
+                    </div>
+                    <div class="serial-stat-item">
+                        <span class="stat-label">Baud Rate:</span>
+                        <strong class="stat-val mono" id="lblSerialActiveBaud">115200 bps</strong>
+                    </div>
+                    <div class="serial-stat-item">
+                        <span class="stat-label">Sample Rate:</span>
+                        <strong class="stat-val mono" id="lblSerialStreamRate">0.0 Hz</strong>
+                    </div>
+                    <div class="serial-stat-item">
+                        <span class="stat-label">Total Packets:</span>
+                        <strong class="stat-val mono" id="lblSerialPacketsCount">0</strong>
+                    </div>
+                    <div class="serial-stat-item">
+                        <span class="stat-label">Latest Force:</span>
+                        <strong class="stat-val mono text-success" id="lblSerialLatestVal">-- %</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Section 5: Live Graphs -->
         <div class="card graphs-section">
             <div class="section-heading">LIVE GRAPHS</div>

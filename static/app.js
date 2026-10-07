@@ -56,10 +56,28 @@ document.addEventListener("DOMContentLoaded", () => {
     const txtEspIp = document.getElementById("txtEspIp");
     const btnConnectWifi = document.getElementById("btnConnectWifi");
 
+    // Hardware Serial Monitor & Real-Time Data Plotter Elements
+    const serialMonitorCard = document.getElementById("serialMonitorCard");
+    const serialMonitorBody = document.getElementById("serialMonitorBody");
+    const btnClearSerialLog = document.getElementById("btnClearSerialLog");
+    const btnToggleSerialMonitor = document.getElementById("btnToggleSerialMonitor");
+    const chkAutoScrollSerial = document.getElementById("chkAutoScrollSerial");
+    const serialTerminal = document.getElementById("serialTerminal");
+    const badgeSerialRate = document.getElementById("badgeSerialRate");
+    const lblSerialActivePort = document.getElementById("lblSerialActivePort");
+    const lblSerialActiveBaud = document.getElementById("lblSerialActiveBaud");
+    const lblSerialStreamRate = document.getElementById("lblSerialStreamRate");
+    const lblSerialPacketsCount = document.getElementById("lblSerialPacketsCount");
+    const lblSerialLatestVal = document.getElementById("lblSerialLatestVal");
+
     // --- State & Settings ---
     let isRunning = false;
     let pollInterval = null;
+    let serialPollInterval = null;
+    let lastSerialLogId = 0;
     const MAX_CHART_POINTS = 120; // ~30-40 seconds rolling window at 3-4 Hz
+    const MAX_SERIAL_CHART_POINTS = 60; // ~15-20 seconds rolling window
+    const MAX_TERMINAL_LINES = 200; // max lines kept in DOM
 
     // --- Chart.js Configuration & Theme ---
     Chart.defaults.color = "#4b5563";
@@ -178,6 +196,30 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // 5. Hardware Serial Stream Real-Time Oscilloscope
+    const chartSerialStream = new Chart(document.getElementById("chartSerialStream"), {
+        type: "line",
+        data: {
+            labels: [],
+            datasets: [{
+                label: "Hardware Force (%)",
+                data: [],
+                borderColor: "#0284c7",
+                backgroundColor: "rgba(2, 132, 199, 0.12)",
+                fill: true,
+                tension: 0.2,
+                pointRadius: 1,
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: makeChartScales("Time", "Force (%)", 0, 100)
+        }
+    });
+
     function resetCharts() {
         [chartGripForce, chartWristAngle, chartMovementAngle, chartAngularSpeed].forEach(c => {
             c.data.labels = [];
@@ -194,6 +236,16 @@ document.addEventListener("DOMContentLoaded", () => {
             chart.data.datasets[0].data.shift();
         }
         chart.update();
+    }
+
+    function escapeHtml(str) {
+        if (!str) return "";
+        return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
     }
 
     // --- Universal Device Discovery (Connected Camera, External Devices, Serial COM, Network) ---
@@ -475,8 +527,110 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
-    // Initial Universal Device Discovery & Telemetry Heartbeat
+    // --- Hardware Serial Stream Polling Loop (~5 Hz) ---
+    async function pollSerialStream() {
+        try {
+            const resp = await fetch(`/api/serial/stream?since_id=${lastSerialLogId}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            // 1. Update Hardware Serial Telemetry Badges & Footer
+            if (lblSerialActivePort) lblSerialActivePort.textContent = data.active_port || "NONE";
+            if (lblSerialActiveBaud) lblSerialActiveBaud.textContent = data.baud_rate ? `${data.baud_rate} bps` : "--";
+            if (lblSerialStreamRate) lblSerialStreamRate.textContent = `${(data.packet_rate_hz || 0).toFixed(1)} Hz`;
+            if (badgeSerialRate) badgeSerialRate.textContent = `${(data.packet_rate_hz || 0).toFixed(1)} Hz`;
+            if (lblSerialPacketsCount) lblSerialPacketsCount.textContent = (data.total_packets || 0).toLocaleString();
+
+            if (data.latest_val !== null && data.latest_val !== undefined) {
+                if (lblSerialLatestVal) lblSerialLatestVal.textContent = `${data.latest_val.toFixed(1)} %`;
+            }
+
+            // 2. Append new log lines to Terminal and Plotter
+            const logs = data.logs || [];
+            if (logs.length > 0) {
+                if (serialTerminal && serialTerminal.children.length === 1 && serialTerminal.children[0].classList.contains("text-muted")) {
+                    serialTerminal.innerHTML = "";
+                }
+
+                logs.forEach(item => {
+                    if (item.id > lastSerialLogId) {
+                        lastSerialLogId = item.id;
+                    }
+
+                    // Append to terminal
+                    if (serialTerminal) {
+                        const line = document.createElement("div");
+                        line.className = "term-line";
+                        const valStr = item.val !== null ? `${item.val.toFixed(1)}%` : "NULL";
+                        line.innerHTML = `<span class="term-time">[${item.time}]</span> <span class="term-raw">${escapeHtml(item.raw)}</span> &rarr; <span class="term-val">${valStr}</span>`;
+                        serialTerminal.appendChild(line);
+                    }
+
+                    // Append to plotter
+                    if (item.val !== null && chartSerialStream) {
+                        chartSerialStream.data.labels.push(item.time.slice(3));
+                        chartSerialStream.data.datasets[0].data.push(item.val);
+                        if (chartSerialStream.data.labels.length > MAX_SERIAL_CHART_POINTS) {
+                            chartSerialStream.data.labels.shift();
+                            chartSerialStream.data.datasets[0].data.shift();
+                        }
+                    }
+                });
+
+                if (chartSerialStream) {
+                    chartSerialStream.update();
+                }
+
+                // Trim terminal DOM elements to prevent memory accumulation
+                if (serialTerminal) {
+                    while (serialTerminal.children.length > MAX_TERMINAL_LINES) {
+                        serialTerminal.removeChild(serialTerminal.firstChild);
+                    }
+
+                    // Auto-scroll if enabled
+                    if (chkAutoScrollSerial && chkAutoScrollSerial.checked) {
+                        serialTerminal.scrollTop = serialTerminal.scrollHeight;
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Serial stream polling error:", err);
+        }
+    }
+
+    // --- Hardware Serial Controls ---
+    if (btnClearSerialLog) {
+        btnClearSerialLog.addEventListener("click", async () => {
+            try {
+                await fetch("/api/serial/clear", { method: "POST" });
+                if (serialTerminal) {
+                    serialTerminal.innerHTML = `<div class="term-line text-muted">// Serial log buffer cleared.</div>`;
+                }
+                if (chartSerialStream) {
+                    chartSerialStream.data.labels = [];
+                    chartSerialStream.data.datasets[0].data = [];
+                    chartSerialStream.update();
+                }
+                lastSerialLogId = 0;
+            } catch (err) {
+                console.error("Clear serial log error:", err);
+            }
+        });
+    }
+
+    if (btnToggleSerialMonitor && serialMonitorBody) {
+        btnToggleSerialMonitor.addEventListener("click", () => {
+            const isHidden = serialMonitorBody.style.display === "none";
+            serialMonitorBody.style.display = isHidden ? "block" : "none";
+            btnToggleSerialMonitor.textContent = isHidden ? "COLLAPSE" : "EXPAND";
+        });
+    }
+
+    // Initial Universal Device Discovery & Telemetry Heartbeats
     scanAllDevices();
     pollInterval = setInterval(pollLiveTelemetry, 300);
+    serialPollInterval = setInterval(pollSerialStream, 200);
     pollLiveTelemetry();
+    pollSerialStream();
 });
+

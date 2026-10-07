@@ -569,6 +569,31 @@ def api_config_sensor():
     })
 
 
+@app.route("/api/serial/stream")
+def api_serial_stream():
+    """Returns real-time serial monitor logs and packet health metrics."""
+    since_id = request.args.get("since_id", default=0, type=int)
+    stream_data = system.sensor.get_serial_stream(since_id=since_id)
+    return jsonify(stream_data)
+
+
+@app.route("/api/serial/clear", methods=["POST"])
+def api_serial_clear():
+    """Clears serial console buffer."""
+    system.sensor.clear_serial_logs()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/serial/export_csv")
+def api_serial_export_csv():
+    """Exports all recorded raw serial stream packets as a downloadable CSV."""
+    csv_content = system.sensor.generate_serial_csv()
+    response = make_response(csv_content)
+    response.headers["Content-Disposition"] = "attachment; filename=serial_data_stream.csv"
+    response.headers["Content-Type"] = "text/csv; charset=utf-8"
+    return response
+
+
 def open_browser():
     """Opens browser to localhost on server startup."""
     time.sleep(1.0)
